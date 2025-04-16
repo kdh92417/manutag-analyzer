@@ -1,19 +1,18 @@
-
 import streamlit as st
 import json
 from collections import Counter
 import pandas as pd
 
-def extract_and_count_manu_tag_keywords(data):
+def extract_and_count_manu_tag_keywords(products):
     all_keywords = []
+    manu_list = []
 
-    st.subheader("📋 각 product의 manuTag 값")
-    for i, product in enumerate(data, 1):
+    for i, product in enumerate(products, 1):
         manu_tag = product.get("manuTag", "")
         if manu_tag is None:
             manu_tag = ""
 
-        st.text(f"{i}) {manu_tag}")
+        manu_list.append({"index": i, "manuTag": manu_tag})
 
         if manu_tag.strip() == "":
             all_keywords.append("(empty)")
@@ -25,29 +24,49 @@ def extract_and_count_manu_tag_keywords(data):
     counter = Counter(all_keywords)
     sorted_by_freq = sorted(counter.items(), key=lambda x: x[1], reverse=True)
 
-    return sorted_by_freq
+    return sorted_by_freq, manu_list
 
-st.title("🔍 manuTag 키워드 분석기 (텍스트 입력용)")
+# 페이지 설정
+st.set_page_config(page_title="manuTag 키워드 분석기", layout="wide")
 
-with st.form("text_input_form"):
-    raw_text = st.text_area("JSON 텍스트를 입력해주세요 (product 리스트 형식)", height=300)
-    submitted = st.form_submit_button("📊 분석 시작하기")
+# 제목
+st.title("🔍 manuTag 키워드 분석기")
 
-if submitted:
-    try:
-        data = json.loads(raw_text)
+# JSON 입력창
+json_input = st.text_area("📥 JSON 입력", height=600, placeholder="여기에 JSON 문자열을 입력하세요...", key="large_input_area")
 
-        if isinstance(data, dict) and "products" in data:
-            data = data["products"]
+# 분석 버튼
+if st.button("📊 분석 시작하기"):
+    if json_input.strip() == "":
+        st.warning("⚠️ JSON 문자열을 입력한 후 버튼을 눌러주세요.")
+    else:
+        try:
+            raw_data = json.loads(json_input)
 
-        if not isinstance(data, list):
-            st.error("⚠️ JSON 텍스트는 'products' 키를 포함하거나 product 객체 리스트여야 합니다.")
-        else:
-            sorted_keywords = extract_and_count_manu_tag_keywords(data)
+            if isinstance(raw_data, list):
+                products = raw_data
+            elif isinstance(raw_data, dict):
+                products = raw_data.get("shoppingResult", {}).get("products", [])
+                if not isinstance(products, list):
+                    st.error("❌ 'products' 키가 리스트 형태여야 합니다.")
+                    st.stop()
+            else:
+                st.error("❌ 올바르지 않은 JSON 구조입니다.")
+                st.stop()
 
-            st.subheader("📊 키워드 별 등장 횟수")
-            df = pd.DataFrame(sorted_keywords, columns=["키워드", "빈도수"])
-            st.dataframe(df)
+            if not products:
+                st.warning("⚠️ 'products' 리스트가 비어있습니다.")
+            else:
+                sorted_keywords, manu_list = extract_and_count_manu_tag_keywords(products)
 
-    except Exception as e:
-        st.error(f"텍스트를 처리하는 중 오류가 발생했습니다: {e}")
+                st.subheader("📋 전체 manuTag 목록")
+                st.dataframe(pd.DataFrame(manu_list), use_container_width=True)
+
+                st.subheader("📊 키워드 별 등장 횟수")
+                df = pd.DataFrame(sorted_keywords, columns=["키워드", "빈도수"])
+                st.dataframe(df, use_container_width=True)
+
+        except json.JSONDecodeError as e:
+            st.error(f"❌ JSON 파싱 오류: {e}")
+        except Exception as e:
+            st.error(f"⚠️ 처리 중 오류 발생: {e}")
